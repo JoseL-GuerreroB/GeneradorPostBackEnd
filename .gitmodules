@@ -1,0 +1,3 @@
+[submodule "GeneradorPostFrontEnd"]
+	path = GeneradorPostFrontEnd
+	url = https://github.com/JoseL-GuerreroB/GeneradorPostFrontEnd
