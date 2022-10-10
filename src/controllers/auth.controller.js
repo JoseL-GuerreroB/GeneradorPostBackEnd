@@ -1,16 +1,17 @@
 import { eliminarFotoOIMG, subirFoto } from "../libs/cloudinary.js";
 import User from "../models/User.js";
+import Post from '../models/Post.js';
 import fsxt from "fs-extra";
 import { comparar, encriptar } from "../libs/bcrypt.js";
 import { generarRefreshToken, generarToken } from "../libs/jwt.js";
-import { imgDefaultPID, imgDefaultUrl } from "../libs/config.js";
+import { imgDefaultPID, imgDefaultUrl, imgPostDefPID } from "../libs/config.js";
 
 export const register = async (req, res) => {
   const {name, email, password} = req.body;
     let image;
   try {
     const emailre = await User.findOne({email});
-    if (emailre) return res.status(400).json({error: "Correo ya existente", mensaje: "Registrate con otro correo o inicia sesion"});
+    if (emailre) return res.status(400).json({error: "Correo ya existente", mensaje: "Registrate con otro correo o inicia sesion", sesion: false});
     const hashPass = await encriptar(password);
     if(req.files?.image){
       const result = await subirFoto(req.files.image.tempFilePath);
@@ -32,12 +33,12 @@ export const register = async (req, res) => {
       image
     });
     user = await user.save();
-    const {token, caducidad} = generarToken(user._id);
-    res.status(201).json({sesion: true, mensaje: "Sesion creada", token, caducidad, user});
+    generarRefreshToken(user._id, res);
+    res.status(201).json({ok: true, mensaje: "Sesion creada"});
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
@@ -55,13 +56,12 @@ export const login = async (req, res) => {
       error: "Contraseña incorrecta",
       mensaje: "Ingresa la contraseña correcta"
     });
-    const {token, caducidad} = generarToken(user._id);
     generarRefreshToken(user._id, res);
-    return res.json({ token, caducidad });
+    return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
@@ -75,7 +75,7 @@ export const sesion = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
@@ -86,11 +86,10 @@ export const editUser = async (req, res) => {
   let image;
   try {
     let user = await User.findById(uid);
-    if (!user) return res.status(403).json({ error: "Sesion desconocida", mensaje: "Emos decidido banear tu cuenta, ya no puedes ingresar" });
+    if (!user) return res.status(403).json({ error: "Sesion desconocida", mensaje: "Hemos decidido banear tu cuenta, ya no puedes ingresar" });
     if (newUser.email) {
       let emailre = await User.findOne({ email: newUser.email });
-      console.log(emailre);
-      if (emailre) res.status(400).json({ error: "Correo ya existente", mensaje: "Intenta con un nuevo correo" });
+      if (emailre && emailre.email!==user.email) return res.status(400).json({ error: "Correo ya existente", mensaje: "Intenta con un nuevo correo" });
     }
     if (user.image.public_id===imgDefaultPID){
       if (req.files?.image) {
@@ -107,8 +106,8 @@ export const editUser = async (req, res) => {
         }
       }
     }else{
-      await eliminarFotoOIMG(user.image.public_id);
       if (req.files?.image) {
+        await eliminarFotoOIMG(user.image.public_id);
         const result = await subirFoto(req.files.image.tempFilePath);
         await fsxt.remove(req.files.image.tempFilePath);
         image = {
@@ -117,8 +116,8 @@ export const editUser = async (req, res) => {
         }
       } else {
         image = {
-          public_id: imgDefaultPID,
-          url: imgDefaultUrl
+          public_id: user.image.public_id,
+          url: user.image.url
         }
       }
     }
@@ -137,7 +136,7 @@ export const editUser = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
@@ -146,13 +145,22 @@ export const elimUser = async (req, res) => {
   const { uid } = req;
   try {
     let user = await User.findById(uid);
-    if (!user) return res.status(403).json({ error: "Sesion desconocida", mensaje: "Emos decidido banear tu cuenta, ya no puedes ingresar" });
+    if (!user) return res.status(403).json({ error: "Sesion desconocida", mensaje: "Hemos decidido banear tu cuenta, ya no puedes ingresar" });
+    const postD = await Post.find({uid: user._id});
+    if (postD.length>0) {
+      await Promise.allSettled(postD.map(async el => {
+        if (el.image.public_id !==imgPostDefPID) await eliminarFotoOIMG(el.image.public_id);
+      }));
+      await Post.deleteMany({uid: user._id});
+    }
+    if (user.image.public_id!==imgDefaultPID) await eliminarFotoOIMG(user.image.public_id);
     await User.findByIdAndRemove(user._id);
+    res.clearCookie('refreshToken');
     return res.status(200).json({ ok: true, mensaje: "Tu usuario se a eliminado exitosamente" });
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
@@ -164,12 +172,25 @@ export const refreshSesion = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde."
+      mensaje: "Favor de intentarlo más tarde."
     });
   }
 }
 
 export const logout = async (req, res) => {
-  res.clearCookie('refreshToken');
-  res.json({ ok: true, mensaje: "Sesión terminada" });
+  try {
+    const { uid } = req;
+    const user = User.findOne({ _id: uid });
+    if (user) {
+      res.clearCookie('refreshToken');
+      return res.json({ ok: true, mensaje: "Sesión terminada" });
+    } else {
+      return res.json({ error: "Sesión ya concluida", mensaje: "Ya has cerrado tu sesión" });
+    }      
+  } catch (error) {
+    return res.status(500).json({
+      error: "Error del servidor",
+      mensaje: "Favor de intentarlo más tarde."
+    });
+  }
 }

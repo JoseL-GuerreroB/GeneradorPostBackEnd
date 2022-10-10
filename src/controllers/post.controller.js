@@ -6,11 +6,29 @@ import { imgPostDefPID, imgPostDefUrl } from "../libs/config.js";
 export const getPosts = async(req, res) => {
   try {
     const posts = await Post.find({uid: req.uid});
-    res.status(201).json(posts);
+    res.status(200).json(posts);
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde.",
+      mensaje: "Favor de intentarlo más tarde.",
+    });
+  }
+}
+
+export const getPost = async(req, res) => {
+  const {id} = req.params;
+  try {
+    const post = await Post.findOne({ 
+      $and: [
+        { uid: req.uid }, {_id: id }
+      ]
+    });
+    if (!post || post.length === 0) return res.status(403).json({ error: "Post no encontrado", mensaje: "El recurso es inexistente" })
+    return res.status(200).json(post);
+  } catch (error) {
+    return res.status(500).json({
+      error: "Error del servidor",
+      mensaje: "Favor de intentarlo más tarde.",
     });
   }
 }
@@ -32,9 +50,11 @@ export const postPost = async(req, res) => {
     await post.save();
     res.status(201).json(post);
   } catch (error) {
+    
+    console.log(error)
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde.",
+      mensaje: "Favor de intentarlo más tarde.",
     });
   }
 }
@@ -66,8 +86,8 @@ export const putPost = async(req,res) => {
         }
       }
     } else {
-      await eliminarFotoOIMG(post.image.public_id);
       if (req.files?.image) {
+        await eliminarFotoOIMG(post.image.public_id);
         const result = await subirIMG(req.files.image.tempFilePath);
         await fsxt2.remove(req.files.image.tempFilePath);
         spost.image = {
@@ -76,8 +96,8 @@ export const putPost = async(req,res) => {
         }
       } else {
         spost.image = {
-          public_id: imgPostDefPID,
-          url: imgPostDefUrl
+          public_id: post.image.public_id,
+          url: post.image.url
         }
       }
     }
@@ -86,7 +106,7 @@ export const putPost = async(req,res) => {
   } catch (error) {
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde.",
+      mensaje: "Favor de intentarlo más tarde.",
     });
   }
 }
@@ -103,12 +123,14 @@ export const deletePost = async (req,res) => {
       ]
     });
     if (!post || post.length === 0) return res.status(403).json({ error: "Post no encontrado", mensaje: "No puedes eliminar un recurso inexistente" });
+    if (post.fav === true) return res.status(400).json({ error: "Post favorito", mensaje: "No puedes eliminar un post favorito" });
     await Post.findByIdAndRemove(id);
-    return res.status(200).json({ok: true, post});
+    return res.status(200).json({ok: true, mensaje: "Post eliminado"});
   } catch (error) {
+    console.log(error);
     return res.status(500).json({
       error: "Error del servidor",
-      mensaje: "Por el momento el servidor esta inactivo, favor de intentarlo más tarde.",
+      mensaje: "Favor de intentarlo más tarde.",
     });
   }
 }

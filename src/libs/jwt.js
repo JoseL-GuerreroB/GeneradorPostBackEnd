@@ -3,11 +3,11 @@ import { jwtRefresh, jwtSecret, Modo } from "./config.js";
 
 export const generarToken = (uid) => {
   try {
-    const caducidad = 60 * 15;
+    const caducidad = 30 * 15;
     const token = jwt.sign({ uid }, jwtSecret, { expiresIn: caducidad });
     return { token, caducidad };
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
 }
 
@@ -19,9 +19,9 @@ export const generarRefreshToken = (uid, res) => {
       httpOnly: true,
       secure: !(Modo === "developer"),
       expires: new Date(Date.now() + 1000 * caducidad)
-    })
+    });
   } catch (error) {
-    console.log(error);
+    console.error(error);
   }
 }
 

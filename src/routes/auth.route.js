@@ -10,7 +10,7 @@ rutasAuth.post('/login', loginVal, login);
 
 rutasAuth.get('/sesion', requiereToken, sesion);
 rutasAuth.get('/presesion', requiereRefToken, refreshSesion);
-rutasAuth.get('/logout', requiereToken, logout)
+rutasAuth.get('/logout', requiereToken, logout);
 
 rutasAuth.put('/editUser', requiereToken, editUserVal, editUser);
 rutasAuth.delete('/elimUser', requiereToken, elimUser);
